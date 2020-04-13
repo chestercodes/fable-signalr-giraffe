@@ -31,13 +31,22 @@ let webApp =
 
 let configureApp (app : IApplicationBuilder) =
     app.UseDefaultFiles()
-       .UseStaticFiles()
-       .UseGiraffe webApp
-
+        .UseCors()
+        .UseStaticFiles()
+        .UseRouting()
+        .UseEndpoints(fun ep -> ep.MapHub<Hub.GameHub>(Shared.Constants.hubServerUrlPart) |> ignore)
+        .UseGiraffe webApp
+    ()
+       
 let configureServices (services : IServiceCollection) =
+    services.AddCors(fun opt ->
+        opt.AddDefaultPolicy(fun b ->
+            b.WithOrigins("http://localhost:8080").AllowAnyHeader().AllowAnyMethod().AllowCredentials() |> ignore
+            ()
+        )
+    ) |> ignore
+    services.AddSignalR () |> ignore
     services.AddGiraffe() |> ignore
-    services.AddSingleton<Giraffe.Serialization.Json.IJsonSerializer>(Thoth.Json.Giraffe.ThothSerializer()) |> ignore
-    tryGetEnv "APPINSIGHTS_INSTRUMENTATIONKEY" |> Option.iter (services.AddApplicationInsightsTelemetry >> ignore)
 
 WebHost
     .CreateDefaultBuilder()

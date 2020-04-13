@@ -7,10 +7,18 @@
     <ItemGroup>
         <None Include="index.html" />
         <None Include="paket.references" />
+        <None Include="public\signalr.js" />
+        <None Include="public\signalr.js.map" />
+        <None Include="public\signalr.min.js" />
+        <None Include="public\signalr.min.js.map" />
         <None Include="style.scss" />
         <Compile Include="..\Shared\Shared.fs" />
+        <Compile Include="Fable.Imports.SignalR.fs" />
         <Compile Include="Version.fs" />
         <Compile Include="Client.fs" />
+    </ItemGroup>
+    <ItemGroup>
+      <Content Include="public\favicon.png" />
     </ItemGroup>
     <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

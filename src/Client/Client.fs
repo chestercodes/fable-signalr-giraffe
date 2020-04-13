@@ -13,42 +13,67 @@ open Thoth.Json
 
 open Shared
 
-// The model holds data that you want to keep track of while the application is running
-// in this case, we are keeping track of a counter
-// we mark it as optional, because initially it will not be available from the client
-// the initial value will be requested from server
-type Model = { Counter: Counter option }
+open Fable.Import.SignalR
+open Shared
+open Fable.Core
 
-// The Msg type defines what events/actions can occur while the application is running
-// the state of the application changes *only* in reaction to these events
+//https://fable.io/docs/communicate/js-from-fable.html
+let [<Global("signalR")>] sr:IExports = jsNative
+
+// this is a bit grim, went to the global signalR object in console and tweaked until this matched that...
+let connection = sr.HubConnectionBuilder.prototype.withUrl(Shared.Constants.hubClientUrl).build()
+
+
+
+let sendCreateNewPlayer (conn: HubConnection) =
+    let arr = ResizeArray([Some ("Hello" :> obj)])
+    conn.invoke("SendToServer", arr)
+
+connection.start() |> ignore
+
+
+type Model = { MessagesToServer: string list; MessagesFromServer: string list }
+
 type Msg =
-    | Increment
-    | Decrement
-    | InitialCountLoaded of Counter
+    | Start
+    | ReceivedMessageFromServer of string
+    
+let question = "Are we there yet?"
 
-let initialCounter () = Fetch.fetchAs<Counter> "/api/init"
+let sendQuestion q =
+    let arr = ResizeArray([Some (q :> obj)])
+    connection.invoke("SendToServer", arr)
 
-// defines the initial state and initial command (= side-effect) of the application
+let getMessage res =
+    ReceivedMessageFromServer res
+
+let sendQuestionCmd () =
+    Cmd.OfPromise.perform sendQuestion question getMessage
+
+let signalRSubscription initial =
+    let sub dispatch =
+        connection.on("SendToClient", fun (data) ->
+            match data with
+            | x when x.Count = 0 -> ()
+            | x ->
+                dispatch (ReceivedMessageFromServer (string x))
+            | _ -> () //Fable.Core.JS.console.log(data)
+        );
+    Cmd.ofSub sub
+
 let init () : Model * Cmd<Msg> =
-    let initialModel = { Counter = None }
-    let loadCountCmd =
-        Cmd.OfPromise.perform initialCounter () InitialCountLoaded
-    initialModel, loadCountCmd
+    let initialModel = { MessagesToServer = []; MessagesFromServer = [] }
+    initialModel, Cmd.none
 
-// The update function computes the next state of the application based on the current state and the incoming events/messages
-// It can also run side-effects (encoded as commands) like calling the server via Http.
-// these commands in turn, can dispatch messages to which the update function will react.
 let update (msg : Msg) (currentModel : Model) : Model * Cmd<Msg> =
-    match currentModel.Counter, msg with
-    | Some counter, Increment ->
-        let nextModel = { currentModel with Counter = Some { Value = counter.Value + 1 } }
-        nextModel, Cmd.none
-    | Some counter, Decrement ->
-        let nextModel = { currentModel with Counter = Some { Value = counter.Value - 1 } }
-        nextModel, Cmd.none
-    | _, InitialCountLoaded initialCount->
-        let nextModel = { Counter = Some initialCount }
-        nextModel, Cmd.none
+    match msg with
+    | Start ->
+        let m = { currentModel with MessagesToServer = (currentModel.MessagesToServer @ [question]) }
+        m, (sendQuestionCmd ())
+    | ReceivedMessageFromServer msg ->
+        let m = { currentModel  with MessagesFromServer =   (currentModel.MessagesFromServer    @ [msg]) }
+        let m = { m             with MessagesToServer =     (m.MessagesToServer                 @ [question]) }
+        m, (sendQuestionCmd ())
     | _ -> currentModel, Cmd.none
 
 
@@ -77,10 +102,6 @@ let safeComponents =
           str " powered by: "
           components ]
 
-let show = function
-    | { Counter = Some counter } -> string counter.Value
-    | { Counter = None   } -> "Loading..."
-
 let navBrand =
     Navbar.Brand.div [ ]
         [ Navbar.Item.a
@@ -108,24 +129,26 @@ let navMenu =
                         [ Fa.i [Fa.Brand.Github; Fa.FixedWidth] [] ]
                       span [ ] [ str "View Source" ] ] ] ] ]
 
+
 let containerBox (model : Model) (dispatch : Msg -> unit) =
     Box.box' [ ]
         [ Field.div [ Field.IsGrouped ]
-            [ Control.p [ Control.IsExpanded ]
-                [ Input.text
-                    [ Input.Disabled true
-                      Input.Value (show model) ] ]
-              Control.p [ ]
-                [ Button.a
-                    [ Button.Color IsPrimary
-                      Button.OnClick (fun _ -> dispatch Increment) ]
-                    [ str "+" ] ]
-              Control.p [ ]
-                [ Button.a
-                    [ Button.Color IsPrimary
-                      Button.OnClick (fun _ -> dispatch Decrement) ]
-                    [ str "-" ] ] ] ]
+            [   Control.p [ ]
+                    [ Button.a
+                        [ Button.Color IsPrimary
+                          Button.OnClick (fun _ -> dispatch Start) ]
+                        [ str "Start asking" ] ] ] ]
 
+let displayMessages (model : Model) =
+    div [] [
+        Message.message [ ]
+            [ Message.body [ Modifiers [ Modifier.TextAlignment (Screen.All, TextAlignment.Centered) ] ]
+                [ str (String.concat System.Environment.NewLine model.MessagesToServer) ] ]
+        Message.message [ ]
+            [ Message.body [ Modifiers [ Modifier.TextAlignment (Screen.All, TextAlignment.Centered) ] ]
+                [ str (String.concat System.Environment.NewLine model.MessagesFromServer) ] ]
+    ]
+                    
 let view (model : Model) (dispatch : Msg -> unit) =
     Hero.hero [ Hero.Color IsPrimary; Hero.IsFullHeight ]
         [ Hero.head [ ]
@@ -143,7 +166,8 @@ let view (model : Model) (dispatch : Msg -> unit) =
                         [ str "SAFE Template" ]
                       Heading.p [ Heading.IsSubtitle ]
                         [ safeComponents ]
-                      containerBox model dispatch ] ] ] ]
+                      containerBox model dispatch
+                      displayMessages model] ] ] ]
 
 #if DEBUG
 open Elmish.Debug
@@ -151,6 +175,7 @@ open Elmish.HMR
 #endif
 
 Program.mkProgram init update view
+|> Program.withSubscription signalRSubscription
 #if DEBUG
 |> Program.withConsoleTrace
 #endif
