@@ -23,19 +23,17 @@ let [<Global("signalR")>] sr:IExports = jsNative
 // this is a bit grim, went to the global signalR object in console and tweaked until this matched that...
 let connection = sr.HubConnectionBuilder.prototype.withUrl(Shared.Constants.hubClientUrl).build()
 
-
-
 let sendCreateNewPlayer (conn: HubConnection) =
     let arr = ResizeArray([Some ("Hello" :> obj)])
     conn.invoke("SendToServer", arr)
 
 connection.start() |> ignore
 
-
 type Model = { MessagesToServer: string list; MessagesFromServer: string list }
 
 type Msg =
     | Start
+    | SentMessageToServer of string
     | ReceivedMessageFromServer of string
     
 let question = "Are we there yet?"
@@ -44,20 +42,16 @@ let sendQuestion q =
     let arr = ResizeArray([Some (q :> obj)])
     connection.invoke("SendToServer", arr)
 
-let getMessage res =
-    ReceivedMessageFromServer res
-
 let sendQuestionCmd () =
-    Cmd.OfPromise.perform sendQuestion question getMessage
+    Cmd.OfPromise.perform sendQuestion question (fun _ -> SentMessageToServer question)
 
 let signalRSubscription initial =
     let sub dispatch =
         connection.on("SendToClient", fun (data) ->
             match data with
             | x when x.Count = 0 -> ()
-            | x ->
-                dispatch (ReceivedMessageFromServer (string x))
-            | _ -> () //Fable.Core.JS.console.log(data)
+            | x -> dispatch (ReceivedMessageFromServer (string x))
+            | _ -> ()
         );
     Cmd.ofSub sub
 
@@ -68,11 +62,12 @@ let init () : Model * Cmd<Msg> =
 let update (msg : Msg) (currentModel : Model) : Model * Cmd<Msg> =
     match msg with
     | Start ->
-        let m = { currentModel with MessagesToServer = (currentModel.MessagesToServer @ [question]) }
-        m, (sendQuestionCmd ())
+        currentModel, (sendQuestionCmd ())
+    | SentMessageToServer msg ->
+        let m = { currentModel with MessagesToServer = (currentModel.MessagesToServer @ [msg]) }
+        m, Cmd.none
     | ReceivedMessageFromServer msg ->
-        let m = { currentModel  with MessagesFromServer =   (currentModel.MessagesFromServer    @ [msg]) }
-        let m = { m             with MessagesToServer =     (m.MessagesToServer                 @ [question]) }
+        let m = { currentModel  with MessagesFromServer = (currentModel.MessagesFromServer @ [msg]) }
         m, (sendQuestionCmd ())
     | _ -> currentModel, Cmd.none
 
