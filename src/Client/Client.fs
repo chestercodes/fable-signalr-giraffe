@@ -3,18 +3,10 @@ module Client
 open Elmish
 open Elmish.React
 open Fable.FontAwesome
-open Fable.FontAwesome.Free
 open Fable.React
 open Fable.React.Props
-open Fetch.Types
-open Thoth.Fetch
 open Fulma
-open Thoth.Json
-
-open Shared
-
 open Fable.Import.SignalR
-open Shared
 open Fable.Core
 
 //https://fable.io/docs/communicate/js-from-fable.html
@@ -22,10 +14,6 @@ let [<Global("signalR")>] sr:IExports = jsNative
 
 // this is a bit grim, went to the global signalR object in console and tweaked until this matched that...
 let connection = sr.HubConnectionBuilder.prototype.withUrl(Shared.Constants.hubClientUrl).build()
-
-let sendCreateNewPlayer (conn: HubConnection) =
-    let arr = ResizeArray([Some ("Hello" :> obj)])
-    conn.invoke("SendToServer", arr)
 
 connection.start() |> ignore
 
@@ -69,8 +57,6 @@ let update (msg : Msg) (currentModel : Model) : Model * Cmd<Msg> =
     | ReceivedMessageFromServer msg ->
         let m = { currentModel  with MessagesFromServer = (currentModel.MessagesFromServer @ [msg]) }
         m, (sendQuestionCmd question)
-    //| _ -> currentModel, Cmd.none
-
 
 let safeComponents =
     let components =
