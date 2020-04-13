@@ -42,8 +42,8 @@ let sendQuestion q =
     let arr = ResizeArray([Some (q :> obj)])
     connection.invoke("SendToServer", arr)
 
-let sendQuestionCmd () =
-    Cmd.OfPromise.perform sendQuestion question (fun _ -> SentMessageToServer question)
+let sendQuestionCmd q =
+    Cmd.OfPromise.perform sendQuestion q (fun _ -> SentMessageToServer q)
 
 let signalRSubscription initial =
     let sub dispatch =
@@ -62,14 +62,14 @@ let init () : Model * Cmd<Msg> =
 let update (msg : Msg) (currentModel : Model) : Model * Cmd<Msg> =
     match msg with
     | Start ->
-        currentModel, (sendQuestionCmd ())
+        currentModel, (sendQuestionCmd question)
     | SentMessageToServer msg ->
         let m = { currentModel with MessagesToServer = (currentModel.MessagesToServer @ [msg]) }
         m, Cmd.none
     | ReceivedMessageFromServer msg ->
         let m = { currentModel  with MessagesFromServer = (currentModel.MessagesFromServer @ [msg]) }
-        m, (sendQuestionCmd ())
-    | _ -> currentModel, Cmd.none
+        m, (sendQuestionCmd question)
+    //| _ -> currentModel, Cmd.none
 
 
 let safeComponents =
